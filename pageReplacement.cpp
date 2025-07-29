@@ -1,225 +1,197 @@
-#include<bits/stdc++.h>
+#include <bits/stdc++.h>
 using namespace std;
 
-int numPage, numframe;
-string s = "";
+int numPage, numFrame;
 
 struct Node {
     int data;
     Node* next;
-
-    Node(int d) {
-        data = d;
-        next = NULL;
-    }
+    Node(int d) : data(d), next(nullptr) {}
 };
 
-int fifo() {
-    int hit=0, miss=0;
-    vector<int> v(numframe, -1);
+// FIFO
+int fifo(const string& refString) {
+    int miss = 0, index = 0;
+    vector<int> frames(numFrame, -1);
 
-    int i,j,index = 0;
-    for(int i=0; i<s.length(); i++) {
-        for(j=0; j<numframe; j++) {
-            if(v[j] == (s[i]-'0')) {
-                hit++;
+    for (char c : refString) {
+        int page = c - '0';
+        bool hit = false;
+
+        for (int f : frames) {
+            if (f == page) {
+                hit = true;
                 break;
             }
         }
-        if(j == numframe) {
-            v[index] = s[i]-'0';
+
+        if (!hit) {
+            frames[index] = page;
+            index = (index + 1) % numFrame;
             miss++;
-            index = (index+1)%numframe;
         }
     }
-
     return miss;
-
 }
 
-int lru() {
-    int hit=0, miss=1;
+// LRU
+int lru(const string& refString) {
+    if (refString.empty()) return 0;
 
-    Node* temp = new Node((s[0]-'0'));
-    Node* rear = temp;
-    Node* front = temp;
-    Node* temp2;
+    int miss = 1, hit = 0, listSize = 1;
+    Node* front = new Node(refString[0] - '0');
+    Node* rear = front;
 
-    int listSize = 1;
-    for(int i=1; i<s.length(); i++) {
-        temp = front;
-        temp2 = NULL;
-        while(temp != NULL) {
-            if(temp->data == (s[i]-'0')) {
-                hit++;
+    for (int i = 1; i < refString.size(); i++) {
+        int page = refString[i] - '0';
+        Node* temp = front;
+        Node* prev = nullptr;
+
+        bool found = false;
+        while (temp) {
+            if (temp->data == page) {
+                found = true;
                 break;
             }
-            temp2 = temp;
+            prev = temp;
             temp = temp->next;
         }
 
-        //Miss
-        if(temp == NULL) {
-            temp = new Node((s[i]-'0'));
-            //Direct insert --> Memory Frame are empty.
-           if(listSize != numframe) {
-                listSize++;
-            }
-            //LRU Algorithm --> memory Frame Full.
-            else {
-                temp2 = front;
-                front = front->next;
-                delete temp2;
-            }
-            rear->next = temp;
-            rear = temp;
+        if (!found) {
             miss++;
-        }
-       // Hit
-        else {
-            if(temp->next == NULL) 
-                continue;
-            if(temp2 != NULL)
-                temp2->next = temp->next;
-            else
+            Node* newNode = new Node(page);
+            if (listSize < numFrame) {
+                listSize++;
+            } else {
+                Node* oldFront = front;
                 front = front->next;
-            temp->next = NULL;
+                delete oldFront;
+            }
+            rear->next = newNode;
+            rear = newNode;
+        } else {
+            if (temp->next == nullptr) continue; // already at rear
+            if (prev) prev->next = temp->next;
+            else front = front->next;
             rear->next = temp;
+            temp->next = nullptr;
             rear = temp;
+            hit++;
         }
+    }
+
+    // Clean up
+    while (front) {
+        Node* next = front->next;
+        delete front;
+        front = next;
     }
 
     return miss;
 }
 
-int lfu() {
-    unordered_map<int,int> m;
-    int hit=0, miss=0;
-    vector<int> v(numframe, -1);
-    
-    //Getting all the unique values out of the reference string
-    set<int> se;
-    for(int i=0; i<s.length(); i++) {
-        if(!se.count((s[i]-'0'))) {
-            se.insert((s[i]-'0'));
-        }
-    }
+// LFU
+int lfu(const string& refString) {
+    unordered_map<int, int> freq;
+    vector<int> frames(numFrame, -1);
+    int index = 0, miss = 0, usedFrames = 0;
 
-    //Adding all the unique values to map m with initial values 0.
-    set<int>::iterator it = se.begin();
-    while(it != se.end()) {
-        m.insert({*it, 0});
-        it++;
-    }
+    for (char c : refString) {
+        int page = c - '0';
+        bool hit = false;
 
-    int i,j,x=0,index = 0;
-    for(int i=0; i<s.length(); i++) {
-        for(j=0; j<numframe; j++) {
-            if(v[j] == (s[i]-'0')) {
-                m[(s[i]-'0')]++;
-                hit++;
+        for (int f : frames) {
+            if (f == page) {
+                freq[page]++;
+                hit = true;
                 break;
             }
         }
-        //Miss
-        if(j == numframe) {
-            //Directly insert-->space in memory frame
+
+        if (!hit) {
             miss++;
-            if(x < numframe) {
-                v[index] = s[i]-'0';
-                m[(s[i]-'0')]++;
-                x = x+1;
-            }
-            //Perform LFU Algorithm-->Memory space is full.
-            else {
-                vector<int> tempVec;
-                //Find out all the elements with minimum frequency.
-                int minfreq = m[v[0]];
-                for(int t=1; t<numframe; t++) {
-                    if(m[v[t]] < minfreq) {
-                        minfreq = m[v[t]];
-                    }
-                }
-                for(int t=0; t<numframe; t++) {
-                    if(m[v[t]] == minfreq) {
-                        tempVec.push_back(t);
+            if (usedFrames < numFrame) {
+                frames[index] = page;
+                freq[page]++;
+                usedFrames++;
+                index = (index + 1) % numFrame;
+            } else {
+                // Find minimum frequency
+                int minFreq = INT_MAX;
+                for (int f : frames) minFreq = min(minFreq, freq[f]);
+
+                // Find candidates with minFreq
+                vector<int> candidates;
+                for (int i = 0; i < numFrame; i++) {
+                    if (freq[frames[i]] == minFreq) {
+                        candidates.push_back(i);
                     }
                 }
 
-                //If exactly 1 then replace.
-                if(tempVec.size() == 1) {
-                    m[v[tempVec[0]]] = 0;
-                    v[tempVec[0]] = s[i]-'0';
-                    m[v[tempVec[0]]]++; 
-                }     
-                //If more then 1 then apply FIFO.  
-                else {
-                    if(find(tempVec.begin(), tempVec.end(), index) == tempVec.end()) {
-                        index = (index + 1)%numframe;
+                int replaceIdx = candidates[0];
+                // Use FIFO if tie
+                if (candidates.size() > 1) {
+                    for (int i = 0; i < numFrame; i++) {
+                        if (find(candidates.begin(), candidates.end(), index) != candidates.end()) {
+                            replaceIdx = index;
+                            break;
+                        }
+                        index = (index + 1) % numFrame;
                     }
-                    m[v[index]] = 0;
-                    v[index] = s[i]-'0';
-                    m[v[index]]++;
                 }
+
+                freq[frames[replaceIdx]] = 0;
+                frames[replaceIdx] = page;
+                freq[page]++;
+                index = (replaceIdx + 1) % numFrame;
             }
-            index = (index+1)%numframe;
         }
     }
-
     return miss;
 }
 
-
+// Main
 int main(int argc, char** argv) {
+    if (argc < 3) {
+        cerr << "Usage: ./a.out <inputfile> <FF|LF|LR> ...\n";
+        return 1;
+    }
 
-    //Reading first line from input file
-    ifstream fin;
-    string fileName = argv[1];
-    fileName +=".txt";
-    fin.open(fileName);
-    
+    string fileName = string(argv[1]) + ".txt";
+    ifstream fin(fileName);
+    if (!fin) {
+        cerr << "[ERROR] Cannot open file: " << fileName << "\n";
+        return 1;
+    }
+
     string line;
     getline(fin, line);
+    stringstream ss(line);
+    ss >> numPage >> numFrame;
 
-    //Taking Number of pages and number of frames as Input.
-    char* str;
-    str = &line[0];
-    char *token = strtok(str, " ");
-    numPage = stoi(token);
-    token = strtok(NULL, " ");
-    numframe = stoi(token);
+    int testCase = 1;
+    while (getline(fin, line)) {
+        string refString = "";
+        for (char c : line) {
+            if (isdigit(c)) refString += c;
+        }
 
-    //Taking reference strings as input.
-    int j = 0;
-    getline(fin, line);
-    while(fin) {
-        for(int i=0; i<line.length(); i++) {
-            if(line[i] != ' ') {
-                s += line[i];
+        cout << "\n---------------- Test Case " << testCase++ << " ----------------\n";
+        cout << "Reference String: " << refString << "\n";
+
+        for (int i = 2; i < argc; i++) {
+            string algo = argv[i];
+            if (algo == "FF") {
+                cout << "FIFO -> Page Faults: " << fifo(refString) << '\n';
+            } else if (algo == "LR") {
+                cout << "LRU  -> Page Faults: " << lru(refString) << '\n';
+            } else if (algo == "LF") {
+                cout << "LFU  -> Page Faults: " << lfu(refString) << '\n';
+            } else {
+                cout << "[ERROR] Unknown algorithm: " << algo << '\n';
             }
         }
-        cout<<"\n--------------------------------------------------------------------------\n";
-        string sequence;
-        cout<<"For Reference string "<<j+1<<endl;
-        for(int i=2; i<argc; i++) {
-            sequence = argv[i];
-            if(sequence == "FF") {
-                cout<<"FIFO : Page Fault --> "<<fifo()<<endl;
-            }
-            else if(sequence == "LF") {
-                cout<<"LFU : Page Fault  --> "<<lfu()<<endl;
-            }
-            else if(sequence == "LR") {
-                cout<<"LRU : Page Fault --> "<<lru()<<endl;
-            }
-            else {
-                cout<<"Wrong string in command line argument"<<endl;
-            }
-        }
-        cout<<"--------------------------------------------------------------------------\n";
-        j++;
-        s = "";
-        getline(fin, line);
+        cout << "--------------------------------------------\n";
     }
 
     fin.close();
